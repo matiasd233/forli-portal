@@ -305,7 +305,7 @@
                 pedidoId = pedidoData.id;
                 
                 // Guardar teléfono del vendedor si existe
-                vendedorTelefono = pedidoData.vendedor_telefono || pedidoData.vendedor_whatsapp || TELEFONO_DEFAULT;
+                vendedorTelefono = pedidoData.vendedor_telefono || pedidoData.vendedor_whatsapp || TELEFONO_WHATSAPP;
                 
                 // Verificar si ya respondió
                 if (pedidoData.estado === 'RESPONDIDO') {
