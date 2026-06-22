@@ -100,6 +100,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             text-align: center;
+            text-decoration: none;
         }
         .btn:hover {
             transform: translateY(-2px);
@@ -148,6 +149,13 @@
         }
         .success h2 { color: #2e7d32; border: none; }
         .hidden { display: none; }
+        .vendedor-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -219,8 +227,8 @@
                     ⏳ Esperar a que el pedido esté completo
                 </button>
                 
-                <button class="btn btn-revision" onclick="confirmar('REVISION_COMERCIAL')">
-                    📞 Revisar con mi comercial
+                <button class="btn btn-revision" onclick="contactarComercial()">
+                    📞 Revisar con mi comercial (WhatsApp)
                 </button>
                 
                 <div class="observacion">
@@ -247,27 +255,29 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN — Obtener de Supabase Dashboard → Project Settings → API
+        // CONFIGURACIÓN
         const SUPABASE_URL = 'https://msavziclgxmepccdghpw.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zYXZ6aWNsZ3htZXBjY2RnaHB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MTQ3MTYsImV4cCI6MjA5NzM5MDcxNn0.PVAv6F0dAgMbP_0kMlCaDnH-WxJIIpEZF6v7EN3zndI';
         
+        // Número de WhatsApp de la oficina FORLI
+        const TELEFONO_WHATSAPP = '5491124841378';
+        
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('t');
-        const decision = urlParams.get('decision');
+        const decisionPre = urlParams.get('decision');
         
         let pedidoId = null;
         let pedidoData = null;
         
-        async function fetchSupabase(endpoint, options = {}) {
-            const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
-            const res = await fetch(url, {
-                ...options,
+        async function fetchRPC(func, params) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${func}`, {
+                method: 'POST',
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
                     'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(params)
             });
             if (!res.ok) {
                 const text = await res.text();
@@ -283,8 +293,8 @@
             }
             
             try {
-                // Buscar pedido por token
-                const pedidos = await fetchSupabase(`pedidos?select=*,clientes(razon_social)&token_portal=eq.${token}`);
+                // Usar RPC para obtener pedido por token
+                const pedidos = await fetchRPC('get_pedido_by_token', { p_token: token });
                 
                 if (!pedidos || pedidos.length === 0) {
                     mostrarError('Pedido no encontrado o link expirado.');
@@ -294,21 +304,23 @@
                 pedidoData = pedidos[0];
                 pedidoId = pedidoData.id;
                 
+                // Guardar teléfono del vendedor si existe
+                vendedorTelefono = pedidoData.vendedor_telefono || pedidoData.vendedor_whatsapp || TELEFONO_DEFAULT;
+                
                 // Verificar si ya respondió
-                const respuestas = await fetchSupabase(`respuestas_cliente?select=*&pedido_id=eq.${pedidoId}`);
-                if (respuestas && respuestas.length > 0) {
-                    mostrarExito(`Ya habías respondido: <strong>${respuestas[0].decision}</strong>`);
+                if (pedidoData.estado === 'RESPONDIDO') {
+                    mostrarExito('Ya habías respondido este pedido.');
                     return;
                 }
                 
-                // Cargar artículos
-                const articulos = await fetchSupabase(`pedido_articulos?select=*&pedido_id=eq.${pedidoId}`);
+                // Cargar artículos con RPC
+                const articulos = await fetchRPC('get_articulos_by_token', { p_token: token });
                 
                 mostrarPedido(pedidoData, articulos);
                 
                 // Si viene con ?decision=XXX, pre-confirmar
-                if (decision) {
-                    confirmar(decision);
+                if (decisionPre) {
+                    confirmar(decisionPre);
                 }
                 
             } catch (err) {
@@ -321,7 +333,7 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('content').classList.remove('hidden');
             
-            document.getElementById('cliente').textContent = pedido.clientes?.razon_social || 'N/A';
+            document.getElementById('cliente').textContent = pedido.cliente_nombre || 'Cliente';
             document.getElementById('nro-pedido').textContent = pedido.nro_pedido;
             document.getElementById('importe').textContent = `$${parseFloat(pedido.importe || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
             document.getElementById('valorizado').textContent = `${pedido.valorizado_pct}%`;
@@ -355,14 +367,26 @@
                         <td>${a.cod_articu}</td>
                         <td>${a.descripcion}</td>
                         <td>${a.cant_pendiente}</td>
-                        <td>${a.fecha_estimada || 'Sin fecha'}</td>
+                        <td>${a.fecha_estimada || a.semana_label || 'Sin fecha'}</td>
                     </tr>
                 `).join('');
             }
         }
         
+        async function contactarComercial() {
+            if (!token) return;
+            
+            const mensaje = encodeURIComponent(
+                `Hola, soy el cliente del portal FORLI. ` +
+                `Quiero revisar el estado de mi pedido N° ${pedidoData ? pedidoData.nro_pedido : ''}. ` +
+                `Token: ${token}`
+            );
+            
+            window.open(`https://wa.me/${TELEFONO_WHATSAPP}?text=${mensaje}`, '_blank');
+        }
+        
         async function confirmar(decision) {
-            if (!pedidoId) return;
+            if (!token) return;
             
             const obs = document.getElementById('observacion').value.trim();
             const nombres = {
@@ -376,25 +400,11 @@
             }
             
             try {
-                // Guardar respuesta
-                await fetchSupabase('respuestas_cliente', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        pedido_id: pedidoId,
-                        decision: decision,
-                        observacion: obs,
-                        ip_cliente: 'web',
-                        user_agent: navigator.userAgent
-                    })
-                });
-                
-                // Actualizar estado del pedido
-                await fetchSupabase(`pedidos?id=eq.${pedidoId}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                        estado: 'RESPONDIDO',
-                        fecha_decision: new Date().toISOString()
-                    })
+                // Usar RPC para guardar respuesta
+                await fetchRPC('save_respuesta', { 
+                    p_token: token, 
+                    p_decision: decision, 
+                    p_observacion: obs 
                 });
                 
                 mostrarExito(`Decisión registrada: <strong>${nombres[decision]}</strong>`);
