@@ -400,13 +400,27 @@
             }
             
             try {
-                // Usar RPC para guardar respuesta
-                await fetchRPC('save_respuesta', { 
-                    p_token: token, 
-                    p_decision: decision, 
-                    p_observacion: obs 
+                // Usar fetch directamente para manejar respuesta vacía (204 No Content)
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_respuesta`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        p_token: token, 
+                        p_decision: decision, 
+                        p_observacion: obs 
+                    })
                 });
                 
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`HTTP ${res.status}: ${text}`);
+                }
+                
+                // La función retorna VOID (204 No Content), no hay JSON que parsear
                 mostrarExito(`Decisión registrada: <strong>${nombres[decision]}</strong>`);
                 
             } catch (err) {
